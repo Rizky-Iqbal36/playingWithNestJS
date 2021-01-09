@@ -6,30 +6,26 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
-import { Observable, of } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 import { User } from '../models/user.interface';
 import { UserService } from '../service/user.service';
+import { IsUserGuard } from '../../auth/guards/is-user.guard';
+import { JwtAuthGuard } from '../../auth/guards/jwt-guard';
+import { UserValidationPipe } from '../pipes/user-validation.pipe';
 @Controller('user')
 export class UserController {
   constructor(private userService: UserService) {}
 
   @Post('register')
-  create(@Body() user: User): Observable<User | Object> {
-    return this.userService.create(user).pipe(
-      map((user: User) => user),
-      catchError((err) => of({ error: err.message })),
-    );
+  create(@Body(UserValidationPipe) user: User): Observable<Object> {
+    return this.userService.create(user);
   }
 
   @Post('login')
-  login(@Body() user: User): Observable<Object> {
-    return this.userService.login(user).pipe(
-      map((jwt: string) => {
-        return { access_token: jwt };
-      }),
-    );
+  login(@Body(UserValidationPipe) user: User): Observable<Object> {
+    return this.userService.login(user);
   }
   @Get()
   findAll(): Observable<User[]> {
@@ -37,17 +33,18 @@ export class UserController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string): Observable<User> {
-    return this.userService.findOne(id);
+  findOne(@Param() params): Observable<User> {
+    return this.userService.findOne(params.id);
   }
 
   @Delete(':id')
-  deleteOne(@Param('id') id: string): Observable<User> {
+  deleteOne(@Param('id') id: number): Observable<User> {
     return this.userService.deleteOne(id);
   }
 
+  @UseGuards(JwtAuthGuard, IsUserGuard)
   @Put(':id')
-  update(@Param('id') id: string, @Body() user: User): Observable<any> {
+  update(@Param('id') id: number, @Body() user: User): Observable<Object> {
     return this.userService.updateOne(id, user);
   }
 }
