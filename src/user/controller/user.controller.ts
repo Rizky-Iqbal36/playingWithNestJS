@@ -9,22 +9,21 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { User } from '../models/user.interface';
+import { User } from '../models/user.dto';
 import { UserService } from '../service/user.service';
 import { IsUserGuard } from '../../auth/guards/is-user.guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-guard';
-import { UserValidationPipe } from '../pipes/user-validation.pipe';
 @Controller('user')
 export class UserController {
   constructor(private userService: UserService) {}
 
   @Post('register')
-  create(@Body(UserValidationPipe) user: User): Observable<Object> {
+  create(@Body() user: User): Observable<Object> {
     return this.userService.create(user);
   }
 
   @Post('login')
-  login(@Body(UserValidationPipe) user: User): Observable<Object> {
+  login(@Body() user: User): Observable<Object> {
     return this.userService.login(user);
   }
   @Get()

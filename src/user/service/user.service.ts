@@ -4,7 +4,7 @@ import { from, Observable } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { Repository } from 'typeorm';
 import { UserEntity } from '../models/user.entity';
-import { User } from '../models/user.interface';
+import { User } from '../models/user.dto';
 import { AuthService } from '../../auth/service/auth.service';
 
 @Injectable()
@@ -17,41 +17,55 @@ export class UserService {
 
   create(user: User): Observable<User> {
     let body = user;
-    return this.authService.hashPassword(user.password).pipe(
-      switchMap((passwordHash: string) => {
-        const storeUser = new UserEntity();
-        storeUser.email = user.email;
-        storeUser.password = passwordHash;
-        storeUser.name = user.name;
-        storeUser.userName = user.userName;
-        return from(this.userRepository.save(storeUser)).pipe(
-          switchMap((user: User) => {
-            if (user) {
-              const { password, ...result } = user;
-              body.id = user.id;
-              return this.authService.generateJWT(body).pipe(
-                map((jwt: string) => {
-                  throw new HttpException(
-                    {
-                      status: HttpStatus.OK,
-                      data: result,
-                      access_token: jwt,
-                    },
-                    HttpStatus.OK,
-                  );
+    return this.findByEmail(user.email).pipe(
+      switchMap((user: User) => {
+        if (user) {
+          throw new HttpException(
+            {
+              status: HttpStatus.BAD_REQUEST,
+              error: { message: 'email is already exist' },
+            },
+            HttpStatus.BAD_REQUEST,
+          );
+        } else {
+          return this.authService.hashPassword(body.password).pipe(
+            switchMap((passwordHash: string) => {
+              const storeUser = new UserEntity();
+              storeUser.email = body.email;
+              storeUser.password = passwordHash;
+              storeUser.name = body.name;
+              storeUser.userName = body.userName;
+              return from(this.userRepository.save(storeUser)).pipe(
+                switchMap((user: User) => {
+                  if (user) {
+                    const { password, ...result } = user;
+                    body.id = user.id;
+                    return this.authService.generateJWT(body).pipe(
+                      map((jwt: string) => {
+                        throw new HttpException(
+                          {
+                            status: HttpStatus.OK,
+                            data: result,
+                            access_token: jwt,
+                          },
+                          HttpStatus.OK,
+                        );
+                      }),
+                    );
+                  } else {
+                    throw new HttpException(
+                      {
+                        status: HttpStatus.BAD_REQUEST,
+                        error: { message: 'Server ERROR :(' },
+                      },
+                      HttpStatus.BAD_REQUEST,
+                    );
+                  }
                 }),
               );
-            } else {
-              throw new HttpException(
-                {
-                  status: HttpStatus.BAD_REQUEST,
-                  error: { message: 'Server ERROR :(' },
-                },
-                HttpStatus.BAD_REQUEST,
-              );
-            }
-          }),
-        );
+            }),
+          );
+        }
       }),
     );
   }

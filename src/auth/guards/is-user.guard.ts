@@ -8,7 +8,7 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { UserService } from '../../user/service/user.service';
-import { User } from '../../user/models/user.interface';
+import { User } from '../../user/models/user.dto';
 
 @Injectable()
 export class IsUserGuard implements CanActivate {
