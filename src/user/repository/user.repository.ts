@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { from, Observable, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { UserEntity } from '../models/user.entity';
-import { User } from '../models/user.interface';
+import { User } from '../models/user.dto';
 import { AuthService } from '../../auth/service/auth.service';
 
 @Injectable()
