@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { from, Observable, throwError } from 'rxjs';
-import { catchError, map, switchMap } from 'rxjs/operators';
+import { from, Observable } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 import { Repository } from 'typeorm';
 import { UserEntity } from '../models/user.entity';
 import { User } from '../models/user.interface';
 import { AuthService } from '../../auth/service/auth.service';
+
 @Injectable()
 export class UserService {
   constructor(
@@ -15,19 +16,41 @@ export class UserService {
   ) {}
 
   create(user: User): Observable<User> {
+    let body = user;
     return this.authService.hashPassword(user.password).pipe(
       switchMap((passwordHash: string) => {
-        const newUser = new UserEntity();
-        newUser.email = user.email;
-        newUser.password = passwordHash;
-        newUser.name = user.name;
-        newUser.userName = user.userName;
-        return from(this.userRepository.save(newUser)).pipe(
-          map((user: User) => {
-            const { password, ...result } = user;
-            return result;
+        const storeUser = new UserEntity();
+        storeUser.email = user.email;
+        storeUser.password = passwordHash;
+        storeUser.name = user.name;
+        storeUser.userName = user.userName;
+        return from(this.userRepository.save(storeUser)).pipe(
+          switchMap((user: User) => {
+            if (user) {
+              const { password, ...result } = user;
+              body.id = user.id;
+              return this.authService.generateJWT(body).pipe(
+                map((jwt: string) => {
+                  throw new HttpException(
+                    {
+                      status: HttpStatus.OK,
+                      data: result,
+                      access_token: jwt,
+                    },
+                    HttpStatus.OK,
+                  );
+                }),
+              );
+            } else {
+              throw new HttpException(
+                {
+                  status: HttpStatus.BAD_REQUEST,
+                  error: { message: 'Server ERROR :(' },
+                },
+                HttpStatus.BAD_REQUEST,
+              );
+            }
           }),
-          catchError((err) => throwError(err)),
         );
       }),
     );
@@ -44,25 +67,71 @@ export class UserService {
     );
   }
 
-  findOne(id: string): Observable<any> {
-    return from(this.userRepository.findOne(id));
+  findOne(id: number): Observable<any> {
+    return from(this.userRepository.findOne(id)).pipe(
+      map((user: User) => {
+        if (!user) {
+          throw new HttpException(
+            {
+              status: HttpStatus.NOT_FOUND,
+              message: `There is no user with id:${id}`,
+            },
+            HttpStatus.NOT_FOUND,
+          );
+        }
+        delete user.password;
+        return user;
+      }),
+    );
   }
 
-  deleteOne(id: string): Observable<any> {
-    return from(this.userRepository.delete(id));
+  deleteOne(id: number): Observable<any> {
+    return from(this.findOne(id)).pipe(
+      map((user: User) => {
+        if (!user) {
+          throw new HttpException(
+            {
+              status: HttpStatus.NOT_FOUND,
+              message: `There is no user with id:${id}`,
+            },
+            HttpStatus.NOT_FOUND,
+          );
+        }
+        return this.userRepository.delete(id);
+      }),
+    );
+    // return from(this.userRepository.delete(id));
   }
 
-  updateOne(id: string, user: User): Observable<any> {
-    return from(this.userRepository.update(id, user));
+  updateOne(id: number, user: User): Observable<any> {
+    return this.authService.hashPassword(user.password).pipe(
+      switchMap((passwordHash: string) => {
+        user.password = passwordHash;
+        return from(this.userRepository.update(id, user)).pipe(
+          switchMap(() => this.findOne(id)),
+        );
+      }),
+    );
+    // return from(this.userRepository.update(id, user)).pipe(
+    //   switchMap(() => this.findOne(id)),
+    // );
   }
 
   login(user: User): Observable<string> {
     return this.validateUser(user.email, user.password).pipe(
       switchMap((user: User) => {
         if (user) {
-          return this.authService
-            .generateJWT(user)
-            .pipe(map((jwt: string) => jwt));
+          return this.authService.generateJWT(user).pipe(
+            map((jwt: string) => {
+              throw new HttpException(
+                {
+                  status: HttpStatus.OK,
+                  data: { email: user.email, access_token: jwt },
+                },
+                HttpStatus.OK,
+              );
+            }),
+          );
         } else {
           return 'email or password invalid';
         }
@@ -70,7 +139,7 @@ export class UserService {
     );
   }
 
-  validateUser(email: string, password: string): Observable<User> {
+  validateUser(email: string, password: string): Observable<User | Object> {
     return this.findByEmail(email).pipe(
       switchMap((user: User) =>
         this.authService.comparePassword(password, user.password).pipe(
@@ -79,8 +148,13 @@ export class UserService {
               const { password, ...result } = user;
               return result;
             } else {
-              // console.log({ Error, match, user });
-              throw Error;
+              throw new HttpException(
+                {
+                  status: HttpStatus.BAD_REQUEST,
+                  error: 'Email or password invalid',
+                },
+                HttpStatus.BAD_REQUEST,
+              );
             }
           }),
         ),
